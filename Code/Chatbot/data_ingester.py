@@ -20,12 +20,10 @@ class ChatbotDataIngester:
         self.loader = ChatbotDataLoader()
         self.vector_store = vector_store
         self.embeddings = embeddings
-        # self.text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000,
-        #                                                     chunk_overlap=100,
-        #                                                     length_function=len,
-        #                                                     is_separator_regex=False,)
-
-        self.text_splitter = SpacyTextSplitter()
+        self.text_splitter = SpacyTextSplitter(
+            separator="\n\n",
+            chunk_size=300,
+            chunk_overlap=50,)
 
     def embed_content(self, content):
         """
@@ -58,6 +56,8 @@ class ChatbotDataIngester:
         # Generate UUIDs for documents
         uuids = [str(uuid4()) for _ in range(len(split_docs))]
 
+        print(f'{len(documents)} documents splitted into {len(split_docs)} chunks')
+
         # Ingest documents into the vector store
         self.ingest_to_vector_store(split_docs, uuids)
 
@@ -77,6 +77,6 @@ class ChatbotDataIngester:
         """
         try:
             self.vector_store.add_documents(documents, ids=uuids)
-            print(f'Ingested {len(documents)} documents to the vector store')
+            print(f'Ingested {len(documents)} chunks to the vector store')
         except Exception as e:
             print(f'Failed to ingest documents: {str(e)}')

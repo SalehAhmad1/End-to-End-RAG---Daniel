@@ -31,10 +31,10 @@ class ChatbotDataQuery:
 
         prompt = ChatPromptTemplate.from_template(
             "You are a helpful assistant that only answers questions about the context. "
-            "If you don't know the answer, just say you don't know. "
+            "You try your best to extract the relavant answers from the context. "
             "The context is:\n\n{context}\n\n"
             "Question: {question}\n"
-            "Helpful answer in markdown."
+            "Helpful Answer:"
         )
 
         print(f'The Retrieved Documents are:')
@@ -62,6 +62,7 @@ class ChatbotDataQuery:
         """
         retriever = self.vector_store.as_retriever(
             search_kwargs={"k": k},
+            search_type="similarity", #default
         )
         try:
             return self.__generate_response(query_text=query_text, retriever=retriever)
