@@ -8,6 +8,7 @@ from data_ingester import ChatbotDataIngester
 from data_query import ChatbotDataQuery
 from getpass import getpass
 from pinecone import Pinecone, ServerlessSpec
+from ragatouille import RAGPretrainedModel
 
 class RAGChatbot:
     def __init__(self, pinecone_api_key=None, index_name="test-index", config_path="../config.yml"):
@@ -21,6 +22,7 @@ class RAGChatbot:
         self.vector_store = self.initialize_vector_store()
         self.data_ingester = ChatbotDataIngester(vector_store=self.vector_store, embeddings=self.embeddings)
         self.data_query = ChatbotDataQuery(vector_store=self.vector_store)
+        self.reranker = self.initialize_reranker()
         
     def load_config(self, config_path):
         """
@@ -39,6 +41,12 @@ class RAGChatbot:
         hf = HuggingFaceBgeEmbeddings(
             model_name=model_name, model_kwargs=model_kwargs, encode_kwargs=encode_kwargs)
         return hf
+
+    def initialize_reranker(self):
+        """
+        Initialize the reranker
+        """
+        return RAGPretrainedModel.from_pretrained("colbert-ir/colbertv2.0")
 
     def initialize_vector_store(self):
         """
@@ -66,12 +74,19 @@ class RAGChatbot:
         """
         self.data_ingester.load_and_ingest(dir_path, empty_db=empty)
 
-    def query_chatbot(self, query_text, k=1): #, fetch_k=2, lambda_mult=0.5
+    def query_chatbot(self, query_text, k=1, rerank=False): #, fetch_k=2, lambda_mult=0.5
         """
         Query the chatbot using the provided query text and optional search parameters.
         """
-        results = self.data_query.query(
-            query_text=query_text,
-            k=k,
-        )
+        if rerank:
+            results = self.data_query.query(
+                query_text=query_text,
+                k=k,
+                reranker=self.reranker
+            )
+        else:
+            results = self.data_query.query(
+                query_text=query_text,
+                k=k,
+            )
         return results

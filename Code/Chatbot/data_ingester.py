@@ -21,9 +21,9 @@ class ChatbotDataIngester:
         self.vector_store = vector_store
         self.embeddings = embeddings
         self.text_splitter = SpacyTextSplitter(
-            separator="\n\n",
-            chunk_size=300,
-            chunk_overlap=50,)
+            separator=["\n\n", "\n", '.'],
+            chunk_size=1000,
+            chunk_overlap=200,)
 
     def embed_content(self, content):
         """
