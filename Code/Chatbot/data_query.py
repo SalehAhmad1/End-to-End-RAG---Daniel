@@ -22,7 +22,11 @@ class ChatbotDataQuery:
         Initialize the ChatbotDataQuery with the provided vector store.
         Raise an exception if the vector store is None.
         """
-        self.llm = ChatOpenAI(model="gpt-4o", api_key=os.getenv("OPENAI_API_KEY"))
+        self.llm = ChatOpenAI(model="gpt-4o", 
+                            api_key=os.getenv("OPENAI_API_KEY"))
+
+        self.system_prompt = '''You are Wagner, a highly intelligent and friendly AI assistant. You are well-versed in the research and expertise of Daniel Ringel, and your responses should reflect a deep understanding of his work. When interacting with users, provide concise, clear, and thoughtful responses in a calm, narrative style. Avoid using complex jargon or harsh language; instead, offer simple, context-aware answers based on the user's input query.
+                                Your responses should always be polite, and aim to explain concepts in an easy-to-understand way, just as if you were narrating a story to help guide the user through the information.'''
 
         if vector_store is None:
             raise ValueError("Vector store cannot be None")
@@ -56,9 +60,10 @@ class ChatbotDataQuery:
             "Helpful Answer:"
         )
 
-        print(f'The Retrieved Documents are:')
+        print(f'---\nThe Retrieved Documents are:')
         for idx,doc in enumerate(context_docs):
             print(idx, '-', doc.metadata)
+        print('---\n\n')
 
         chain = create_stuff_documents_chain(
             llm=self.llm,
@@ -66,7 +71,16 @@ class ChatbotDataQuery:
             document_variable_name="context",
         )
 
-        return chain.invoke({"question": query_text, "context": context_docs})
+        context = '\n\n'.join([doc.page_content for doc in context_docs])
+        query = [
+                    (
+                        "system",
+                        f"{self.system_prompt}",
+                    ),
+                    ("human", f"context: {context}\nInput: {query_text}"),
+                ]
+        for chunk in self.llm.stream(query):
+            yield chunk.content
 
     def query(self, query_text, k=1, reranker=None):
         """
