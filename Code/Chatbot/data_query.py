@@ -44,12 +44,23 @@ class ChatbotDataQuery:
         if reranker is not None and reranker_docs > 0:
             # Use the custom reranker to rerank the context_docs
             relevant_docs = reranker.rerank(query_text, context_docs_texts, k=reranker_docs)
+
+            All_Scores = [doc['score'] for doc in relevant_docs]
+            Min = min(All_Scores)
+            Max = max(All_Scores)
+            Normalized_Scores = [(doc['score'] - Min) / (Max - Min) for doc in relevant_docs]
             
+            for idx,doc in enumerate(relevant_docs):
+                doc['score'] = Normalized_Scores[idx]
+
             final_reranked_docs = []
             for reranked_doc in relevant_docs:
-                idx_of_content_in_context_doc = reranked_doc['result_index']
-                meta_data = context_docs[idx_of_content_in_context_doc].metadata
-                final_reranked_docs.append(Document(page_content=reranked_doc['content'], metadata=meta_data))
+                if reranked_doc['score'] < 0.50:
+                    continue
+                else:
+                    idx_of_content_in_context_doc = reranked_doc['result_index']
+                    meta_data = context_docs[idx_of_content_in_context_doc].metadata
+                    final_reranked_docs.append(Document(page_content=reranked_doc['content'], metadata=meta_data))
             
             context_docs = final_reranked_docs
 
@@ -61,10 +72,10 @@ class ChatbotDataQuery:
             "Helpful Answer:"
         )
 
-        print(f'---\nThe Retrieved Documents are:')
-        for idx, doc in enumerate(context_docs):
-            print(idx, '-', doc.metadata)
-        print('---\n\n')
+        # print(f'---\nThe Retrieved Documents are:')
+        # for idx, doc in enumerate(context_docs):
+        #     print(idx, '-', doc.metadata)
+        # print('---\n\n')
 
         chain = create_stuff_documents_chain(
             llm=self.llm,
