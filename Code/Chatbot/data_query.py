@@ -18,20 +18,20 @@ def genetare_openai_response(input_prompt):
     
 class ChatbotDataQuery:
     def __init__(self, vector_store):
-        """
-        Initialize the ChatbotDataQuery with the provided vector store.
-        Raise an exception if the vector store is None.
-        """
-        self.llm = ChatOpenAI(model="gpt-4o", 
-                            api_key=os.getenv("OPENAI_API_KEY"))
+        self.llm = ChatOpenAI(model="gpt-4o", api_key=os.getenv("OPENAI_API_KEY"))
 
-        self.system_prompt = '''You are Wagner, a highly intelligent and friendly AI assistant. You are well-versed in the research and expertise of Daniel Ringel, and your responses should reflect a deep understanding of his work. When interacting with users, provide concise, clear, and thoughtful responses in a calm, narrative style. Avoid using complex jargon or harsh language; instead, offer simple, context-aware answers based on the user's input query.
-                                Your responses should always be polite, and aim to explain concepts in an easy-to-understand way, just as if you were narrating a story to help guide the user through the information.'''
+        self.system_prompt = '''You are Wagner, a highly intelligent and friendly AI assistant...'''
 
         if vector_store is None:
             raise ValueError("Vector store cannot be None")
         else:
             self.vector_store = vector_store
+
+    def initialize_reranker(self):
+        """
+        Initialize the custom reranker.
+        """
+        return CustomReranker()
 
     def __generate_response(self, query_text, retriever, reranker=None, reranker_docs=0):
         context_docs = retriever.invoke(query_text)
@@ -42,6 +42,7 @@ class ChatbotDataQuery:
         context_docs_texts = [doc.page_content for doc in context_docs]
 
         if reranker is not None and reranker_docs > 0:
+            # Use the custom reranker to rerank the context_docs
             relevant_docs = reranker.rerank(query_text, context_docs_texts, k=reranker_docs)
             
             final_reranked_docs = []
@@ -54,14 +55,14 @@ class ChatbotDataQuery:
 
         prompt = ChatPromptTemplate.from_template(
             "You are a helpful assistant that only answers questions about the context. "
-            "You try your best to extract the relavant answers from the context. "
+            "You try your best to extract the relevant answers from the context. "
             "The context is:\n\n{context}\n\n"
             "Question: {question}\n"
             "Helpful Answer:"
         )
 
         print(f'---\nThe Retrieved Documents are:')
-        for idx,doc in enumerate(context_docs):
+        for idx, doc in enumerate(context_docs):
             print(idx, '-', doc.metadata)
         print('---\n\n')
 
@@ -73,32 +74,24 @@ class ChatbotDataQuery:
 
         context = '\n\n'.join([doc.page_content for doc in context_docs])
         query = [
-                    (
-                        "system",
-                        f"{self.system_prompt}",
-                    ),
-                    ("human", f"context: {context}\nInput: {query_text}"),
-                ]
+            ("system", f"{self.system_prompt}"),
+            ("human", f"context: {context}\nInput: {query_text}"),
+        ]
+
+        response = ''
         for chunk in self.llm.stream(query):
-            yield chunk.content
+            response += chunk.content
+        return {'response': response, 'context_docs': context_docs}
+            # yield chunk.content
+        # return context_docs
 
     def query(self, query_text, k=1, reranker=None):
-        """
-        Query the vector store with the given parameters and return the result.
-
-        Args:
-        - query_text (str): The text query to search.
-        - k (int): The number of top documents to return (default: 1).
-
-        Returns:
-        - A list of Document objects containing the retrieved metadata and content.
-        """
         retriever = self.vector_store.as_retriever(
             search_kwargs={"k": k},
-            search_type="similarity", #default
+            search_type="similarity",
         )
         try:
-            return self.__generate_response(query_text=query_text, retriever=retriever, reranker=reranker, reranker_docs=k)
+            return self.__generate_response(query_text=query_text, retriever=retriever, reranker=reranker, reranker_docs=k//2)
         except Exception as e:
             print(f"Failed to retrieve documents: {str(e)}")
             return None

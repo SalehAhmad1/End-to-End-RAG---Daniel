@@ -1,7 +1,6 @@
 import os
 import torch
 import yaml
-import torch
 from langchain_pinecone import PineconeVectorStore
 from langchain_community.embeddings import HuggingFaceBgeEmbeddings
 from data_ingester import ChatbotDataIngester
@@ -9,6 +8,59 @@ from data_query import ChatbotDataQuery
 from getpass import getpass
 from pinecone import Pinecone, ServerlessSpec
 from ragatouille import RAGPretrainedModel
+
+import torch.nn.functional as F
+from transformers import AutoModel
+
+class CustomReranker:
+    def __init__(self, model_name="nvidia/NV-Embed-v2", max_length=32768):
+        """
+        Initialize the reranker with the model and tokenizer.
+        """
+        self.model = AutoModel.from_pretrained(model_name, trust_remote_code=True, device_map="auto")
+        self.max_length = max_length
+
+    def _encode(self, texts, instruction=""):
+        """
+        Helper function to encode the input texts using the model.
+        """
+        return self.model.encode(texts, instruction=instruction, max_length=self.max_length)
+
+    def rerank(self, query, passages, k=1):
+        """
+        Rerank the passages based on their similarity with the query.
+        
+        Args:
+        - query (str): The query text.
+        - passages (list of str): List of passages to rerank.
+        - k (int): The number of top-k documents to return after reranking.
+
+        Returns:
+        - A list of the top-k ranked passages with their similarity scores.
+        """
+        query_prefix = "Instruct: Given a question, retrieve passages that answer the question\nQuery: "
+        passage_prefix = ""
+        
+        # Get the query and passage embeddings
+        query_embeddings = self._encode([query], instruction=query_prefix)
+        passage_embeddings = self._encode(passages, instruction=passage_prefix)
+        
+        # Normalize embeddings
+        query_embeddings = F.normalize(query_embeddings, p=2, dim=1)
+        passage_embeddings = F.normalize(passage_embeddings, p=2, dim=1)
+        
+        # Compute similarity scores
+        scores = (query_embeddings @ passage_embeddings.T) * 100
+        scores = scores.tolist()[0]
+        
+        # Sort passages by their scores
+        sorted_passages = sorted(
+            [{"content": passage, "score": score, "result_index": idx}
+             for idx, (passage, score) in enumerate(zip(passages, scores))],
+            key=lambda x: x['score'], reverse=True
+        )
+        
+        return sorted_passages[:k]  # Return top-k reranked passages
 
 class RAGChatbot:
     def __init__(self, pinecone_api_key=None, index_name="test-index", config_path="../config.yml"):
@@ -23,6 +75,7 @@ class RAGChatbot:
         self.data_ingester = ChatbotDataIngester(vector_store=self.vector_store, embeddings=self.embeddings)
         self.data_query = ChatbotDataQuery(vector_store=self.vector_store)
         self.reranker = self.initialize_reranker()
+        # self.reranker = CustomReranker()
         
     def load_config(self, config_path):
         """
@@ -79,14 +132,14 @@ class RAGChatbot:
         Query the chatbot using the provided query text and optional search parameters.
         """
         if rerank:
-            results = self.data_query.query(
+            response = self.data_query.query(
                 query_text=query_text,
                 k=k,
                 reranker=self.reranker
             )
         else:
-            results = self.data_query.query(
+            response = self.data_query.query(
                 query_text=query_text,
                 k=k,
             )
-        return results
+        return response
