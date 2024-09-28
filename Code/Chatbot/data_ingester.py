@@ -20,10 +20,11 @@ class ChatbotDataIngester:
         self.loader = ChatbotDataLoader()
         self.vector_store = vector_store
         self.embeddings = embeddings
-        self.text_splitter = SpacyTextSplitter(
-            separator=["\n\n", "\n", '.'],
+        self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
-            chunk_overlap=200,)
+            chunk_overlap=200,
+            length_function=len,
+        )
 
     def embed_content(self, content):
         """
@@ -51,6 +52,8 @@ class ChatbotDataIngester:
             for file_path, content in file_contents.items()
         ]
 
+        print(f'{len(documents)} documents loaded from the database')
+
         split_docs = self.text_splitter.split_documents(documents)
 
         # Generate UUIDs for documents
@@ -66,8 +69,17 @@ class ChatbotDataIngester:
         Clear all documents in the vector store.
         """
         try:
-            self.vector_store.delete(delete_all=True)
-            print("Cleared the vector store.")
+            current_index = self.vector_store.get_pinecone_index('test')
+            check = False
+            for ids in current_index.list(namespace='default'):
+                check = True
+                break
+            if not check:
+                print("The vector store is already empty.")
+                return
+            else:
+                self.vector_store.delete(delete_all=True)
+                print("Cleared the vector store.")
         except Exception as e:
             print(f"Failed to clear the vector store: {str(e)}")
 
