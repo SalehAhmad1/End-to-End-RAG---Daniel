@@ -121,7 +121,8 @@ class RAGChatbot:
                     highest_similarity = similarity_score
                     best_match = main_query
 
-        if highest_similarity >= 0.5100:
+        print(f'query_text: {query_text} - best_match: {best_match} - highest_similarity: {highest_similarity}')
+        if highest_similarity >= 0.75:
             # print(f'Response from routing:query_text: {query_text} - best_match query: {best_match} - Doc: {Query_Doc_Map[best_match][0]}')
             response, file_path = self.__generate_response_from_file(query_text, Query_Doc_Map[best_match][0])
             return response, file_path

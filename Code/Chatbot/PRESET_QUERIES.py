@@ -8,7 +8,8 @@ Queries = {
     'who is Daniel Ringel?': [
         'Tell me about Daniel Ringel',
         'Can you show Daniel Ringel\'s CV?',
-        'Who is Daniel R.?'
+        'Who is Daniel R.?',
+        'Who is Ringel?'
     ],
 }
 
