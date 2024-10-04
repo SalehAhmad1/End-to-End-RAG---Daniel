@@ -8,11 +8,18 @@ from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.documents import Document
 
-def genetare_openai_response(input_prompt):
-    print(f'In genetare_openai_response')
-    system_prompt = '''You are an assistant designed to provide answers when no (0) relevant documents are retrieved from the vector database. When this happens, you should follow these steps:
-                    1) First, determine if you can answer the user's query using general knowledge or internal information. If so, generate a confident, helpful response in a straightforward narrative style. Do not use phrases such as 'According to me,' 'As of my knowledge,' 'I don’t know but,' or mention knowledge cutoffs or lack of information. Simply provide the answer as if you are certain of the facts.
-                    2) If the question is domain-specific, too specific (e.g., about a particular person or object that could mislead), or outside your knowledge, do not attempt to answer. Politely respond with: 'I'm sorry, I currently do not have enough information to answer your question.'''
+def generate_openai_response(input_prompt, system_prompt=None):
+    if system_prompt is None:
+        system_prompt = '''You are an assistant designed to provide answers when no (0) relevant documents are retrieved from the vector database. When this happens, you should follow these steps:
+                        1) First, determine if you can answer the user's query using general knowledge or internal information. If so, generate a confident, helpful response in a straightforward narrative style. Do not use phrases such as 'According to me,' 'As of my knowledge,' 'I don’t know but,' or mention knowledge cutoffs or lack of information. Simply provide the answer as if you are certain of the facts.
+                        2) If the question is domain-specific, too specific (e.g., about a particular person or object that could mislead), or outside your knowledge, do not attempt to answer. Politely respond with: 'I'm sorry, I currently do not have enough information to answer your question.
+                        
+                        When asked about you, answer from the file(s):
+                        - Who-is-Wagner-Chatbot-Response.docx
+
+                        When asked about Daniel, answer from the file(s):
+                        - Ringel_Daniel_CV_V1.docx
+                        '''
     llm = ChatOpenAI(model="gpt-4o", api_key=os.getenv("OPENAI_API_KEY"))
     return 'The number of retrieved documents from RAG pipeline was 0, so the answer is based on LLM\s internal knowledge.\n' + llm(system_prompt+input_prompt).content
     
@@ -20,7 +27,16 @@ class ChatbotDataQuery:
     def __init__(self, vector_store):
         self.llm = ChatOpenAI(model="gpt-4o", api_key=os.getenv("OPENAI_API_KEY"))
 
-        self.system_prompt = '''You are Wagner, a highly intelligent and friendly AI assistant. More details on you are in a separate file: \'Who-is-Wagner-Chatbot-Response.docx\'.\n'''
+        self.system_prompt = '''You are Wagner, a highly intelligent and friendly AI assistant.
+        You are developed to provide answers to given prompts about you, Daniel and Daniel's work. You will be given some context to generate the answer from to the user.
+        Answer in a very affirmative, concise, and clear manner. Never refuse to answer, always provide relevant information.
+
+        When asked about you, answer from the file(s):
+        - Who-is-Wagner-Chatbot-Response.docx
+
+        When asked about Daniel, answer from the file(s):
+        - Ringel_Daniel_CV_V1.docx
+        '''
 
         if vector_store is None:
             raise ValueError("Vector store cannot be None")
@@ -36,7 +52,7 @@ class ChatbotDataQuery:
     def __generate_response(self, query_text, retriever, reranker=None, reranker_docs=0):
         context_docs = retriever.invoke(query_text)
         if len(context_docs) == 0:
-            response = genetare_openai_response(input_prompt=query_text)
+            response = generate_openai_response(input_prompt=query_text)
             return response
 
         context_docs_texts = [doc.page_content for doc in context_docs]
@@ -55,7 +71,7 @@ class ChatbotDataQuery:
 
             final_reranked_docs = []
             for reranked_doc in relevant_docs:
-                if reranked_doc['score'] < 0.50:
+                if reranked_doc['score'] < 0.35:
                     continue
                 else:
                     idx_of_content_in_context_doc = reranked_doc['result_index']
@@ -92,7 +108,8 @@ class ChatbotDataQuery:
         response = ''
         for chunk in self.llm.stream(query):
             response += chunk.content
-        return {'response': response, 'context_docs': context_docs}
+        return response, context_docs
+        # return {'response': response, 'context_docs': context_docs}
             # yield chunk.content
         # return context_docs
 

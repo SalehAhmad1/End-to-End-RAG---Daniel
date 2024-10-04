@@ -1,66 +1,30 @@
 import os
-import torch
+import numpy as np
 import yaml
+from docx import Document
+
+
 from langchain_pinecone import PineconeVectorStore
 from langchain_community.embeddings import HuggingFaceBgeEmbeddings
+from ragatouille import RAGPretrainedModel
+
 from data_ingester import ChatbotDataIngester
 from data_query import ChatbotDataQuery
 from getpass import getpass
 from pinecone import Pinecone, ServerlessSpec
-from ragatouille import RAGPretrainedModel
 
+import torch
 import torch.nn.functional as F
 from transformers import AutoModel
 
-class CustomReranker:
-    def __init__(self, model_name="nvidia/NV-Embed-v2", max_length=32768):
-        """
-        Initialize the reranker with the model and tokenizer.
-        """
-        self.model = AutoModel.from_pretrained(model_name, trust_remote_code=True, device_map="auto")
-        self.max_length = max_length
+from sklearn.metrics.pairwise import cosine_similarity
+from openai import OpenAI
 
-    def _encode(self, texts, instruction=""):
-        """
-        Helper function to encode the input texts using the model.
-        """
-        return self.model.encode(texts, instruction=instruction, max_length=self.max_length)
+from PRESET_QUERIES import Queries, Query_Doc_Map
+from data_query import generate_openai_response
 
-    def rerank(self, query, passages, k=1):
-        """
-        Rerank the passages based on their similarity with the query.
-        
-        Args:
-        - query (str): The query text.
-        - passages (list of str): List of passages to rerank.
-        - k (int): The number of top-k documents to return after reranking.
-
-        Returns:
-        - A list of the top-k ranked passages with their similarity scores.
-        """
-        query_prefix = "Instruct: Given a question, retrieve passages that answer the question\nQuery: "
-        passage_prefix = ""
-        
-        # Get the query and passage embeddings
-        query_embeddings = self._encode([query], instruction=query_prefix)
-        passage_embeddings = self._encode(passages, instruction=passage_prefix)
-        
-        # Normalize embeddings
-        query_embeddings = F.normalize(query_embeddings, p=2, dim=1)
-        passage_embeddings = F.normalize(passage_embeddings, p=2, dim=1)
-        
-        # Compute similarity scores
-        scores = (query_embeddings @ passage_embeddings.T) * 100
-        scores = scores.tolist()[0]
-        
-        # Sort passages by their scores
-        sorted_passages = sorted(
-            [{"content": passage, "score": score, "result_index": idx}
-             for idx, (passage, score) in enumerate(zip(passages, scores))],
-            key=lambda x: x['score'], reverse=True
-        )
-        
-        return sorted_passages[:k]  # Return top-k reranked passages
+from dotenv import load_dotenv
+load_dotenv()
 
 class RAGChatbot:
     def __init__(self, pinecone_api_key=None, index_name="test-index", config_path="../config.yml"):
@@ -75,7 +39,8 @@ class RAGChatbot:
         self.data_ingester = ChatbotDataIngester(vector_store=self.vector_store, embeddings=self.embeddings)
         self.data_query = ChatbotDataQuery(vector_store=self.vector_store)
         self.reranker = self.initialize_reranker()
-        # self.reranker = CustomReranker()
+        self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        self.client = OpenAI(api_key=self.openai_api_key)
         
     def load_config(self, config_path):
         """
@@ -127,19 +92,83 @@ class RAGChatbot:
         """
         self.data_ingester.load_and_ingest(dir_path, empty_db=empty)
 
+    def __route(self, query_text):
+        query_text = query_text.lower()
+        def cosine_similarity_calc(vec1, vec2):
+            vec1 = np.array(vec1).reshape(1, -1)
+            vec2 = np.array(vec2).reshape(1, -1)
+            return cosine_similarity(vec1, vec2)[0][0]
+
+        def get_embeddings(client, text):
+            response = client.embeddings.create(
+                input=text,
+                model="text-embedding-3-large"
+            )
+            return response.data[0].embedding
+
+        # Generate embeddings for the incoming query
+        query_embedding = get_embeddings(self.client, query_text)
+        
+        best_match = None
+        highest_similarity = 0
+
+        for main_query, similar_queries in Queries.items():
+            for query in similar_queries:
+                query = query.lower()
+                preset_embedding = get_embeddings(self.client, query)
+                similarity_score = cosine_similarity_calc(query_embedding, preset_embedding)
+                if similarity_score > highest_similarity:
+                    highest_similarity = similarity_score
+                    best_match = main_query
+
+        if highest_similarity >= 0.5100:
+            # print(f'Response from routing:query_text: {query_text} - best_match query: {best_match} - Doc: {Query_Doc_Map[best_match][0]}')
+            response, file_path = self.__generate_response_from_file(query_text, Query_Doc_Map[best_match][0])
+            return response, file_path
+        else:
+            return None, None
+
+    def __generate_response_from_file(self, query_text, file_path):
+        """
+        Generate response from a file.
+        """
+        def read_docx(file_path):
+            doc = Document(file_path)
+            full_text = []
+            for paragraph in doc.paragraphs:
+                full_text.append(paragraph.text)
+            return '\n'.join(full_text)
+
+        file_content = read_docx(os.path.join('../../Data', file_path))
+
+        system_prompt = '''
+        You are an intelligent assistant designed to provide clear, accurate, and helpful responses. 
+        Focus on understanding user intent, give concise answers, and offer step-by-step solutions when necessary.
+        Be friendly, professional, and avoid unnecessary information.\n'''
+
+        input_prompt = f'Query: {query_text}\nContext: {file_content}'
+
+        response = generate_openai_response(input_prompt, system_prompt)
+        return response.split('\n')[1], os.path.join('../../Data', file_path)
+
     def query_chatbot(self, query_text, k=1, rerank=False): #, fetch_k=2, lambda_mult=0.5
         """
         Query the chatbot using the provided query text and optional search parameters.
         """
-        if rerank:
-            response = self.data_query.query(
-                query_text=query_text,
-                k=k,
-                reranker=self.reranker
-            )
+
+        route_response, file_path = self.__route(query_text)
+        if route_response == None:
+            if rerank:
+                response, context_docs = self.data_query.query(
+                    query_text=query_text,
+                    k=k,
+                    reranker=self.reranker
+                )
+            else:
+                response = self.data_query.query(
+                    query_text=query_text,
+                    k=k,
+                )
+            return response, context_docs
         else:
-            response = self.data_query.query(
-                query_text=query_text,
-                k=k,
-            )
-        return response
+            return route_response, file_path

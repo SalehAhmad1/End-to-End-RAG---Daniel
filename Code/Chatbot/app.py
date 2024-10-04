@@ -2,6 +2,8 @@ import streamlit as st
 from chatbot import RAGChatbot
 import os
 from dotenv import load_dotenv
+import warnings
+warnings.filterwarnings("ignore")
 
 # Load environment variables from .env file
 load_dotenv()
@@ -26,17 +28,19 @@ prompt = st.text_input("Enter your prompt:", "")
 
 if prompt:
     # Query the chatbot and get the response
-    response = chatbot.query_chatbot(prompt, k=15, rerank=True)
+    response, sources = chatbot.query_chatbot(prompt, k=15, rerank=True)
 
     # Display LLM response
     st.subheader("LLM Response")
-    if 'response' in response:
-        st.write(response['response'])  # Display the entire response in a readable format
+    st.write(response)
 
     # Display reranked relevant documents with metadata
     st.subheader("Relevant Documents")
-    if 'context_docs' in response:
-        reranked_docs = response['context_docs']
-        for i, doc in enumerate(reranked_docs):
+    if type(sources) != str:
+        docs = sources
+        for i, doc in enumerate(docs):
             st.write(f"**Document {i+1} Metadata:**")
             st.json(doc.metadata)  # Display metadata in JSON format for better structure
+    elif type(sources) == str:
+        st.write(f"**Document {1} Metadata:**")
+        st.json({"source": sources})
