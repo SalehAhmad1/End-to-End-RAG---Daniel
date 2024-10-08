@@ -121,9 +121,8 @@ class RAGChatbot:
                     highest_similarity = similarity_score
                     best_match = main_query
 
-        print(f'query_text: {query_text} - best_match: {best_match} - highest_similarity: {highest_similarity}')
         if highest_similarity >= 0.75:
-            # print(f'Response from routing:query_text: {query_text} - best_match query: {best_match} - Doc: {Query_Doc_Map[best_match][0]}')
+            print(f'Response from routing: query_text: {query_text} - best_match query: {best_match} - Doc: {Query_Doc_Map[best_match][0]} - similarity: {highest_similarity}')
             response, file_path = self.__generate_response_from_file(query_text, Query_Doc_Map[best_match][0])
             return response, file_path
         else:
@@ -152,10 +151,14 @@ class RAGChatbot:
         response = generate_openai_response(input_prompt, system_prompt)
         return response.split('\n')[1], os.path.join('../../Data', file_path)
 
-    def query_chatbot(self, query_text, k=1, rerank=False): #, fetch_k=2, lambda_mult=0.5
+    def query_chatbot(self, query_text, k=1, rerank=False, past_messages=[]): #, fetch_k=2, lambda_mult=0.5
         """
         Query the chatbot using the provided query text and optional search parameters.
         """
+
+        if past_messages:
+            past_messages = "\n".join([f"{message['role']}: {message['content']}" for message in past_messages])
+            query_text = f"Past Chat History:\n{past_messages}\n{query_text}"
 
         route_response, file_path = self.__route(query_text)
         if route_response == None:
