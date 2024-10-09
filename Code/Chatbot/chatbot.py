@@ -111,7 +111,7 @@ class RAGChatbot:
         with open('QUESTIONS.txt', 'r') as f:
             phrases = f.read().splitlines()
 
-        if phrases and any(phrase in query_text for phrase in phrases):
+        if phrases and not any(phrase in query_text for phrase in phrases):
             input_prompt = f'Query: {query_text}'
             gpt4_response = generate_openai_response(input_prompt, system_prompt)
             gpt4_response = ''.join(gpt4_response.split('\n')[1:])
