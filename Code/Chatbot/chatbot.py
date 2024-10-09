@@ -107,8 +107,11 @@ class RAGChatbot:
 
         Focus on accuracy—only answer if you're sure. Otherwise, say "no".
         '''
-        
-        if 'who are you' not in query_text:
+
+        with open('QUESTIONS.txt', 'r') as f:
+            phrases = f.read().splitlines()
+
+        if phrases and any(phrase in query_text for phrase in phrases):
             input_prompt = f'Query: {query_text}'
             gpt4_response = generate_openai_response(input_prompt, system_prompt)
             gpt4_response = ''.join(gpt4_response.split('\n')[1:])
