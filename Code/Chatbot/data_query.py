@@ -1,5 +1,6 @@
 import getpass
 import os
+import numpy as np
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from langchain_openai import ChatOpenAI
@@ -8,7 +9,7 @@ from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.documents import Document
 
-def generate_openai_response(input_prompt, system_prompt=None):
+def generate_openai_response(input_prompt, system_prompt=None, temperature=0):
     if system_prompt is None:
         system_prompt = '''You are an assistant designed to provide answers when no (0) relevant documents are retrieved from the vector database. When this happens, you should follow these steps:
                         1) First, determine if you can answer the user's query using general knowledge or internal information. If so, generate a confident, helpful response in a straightforward narrative style. Do not use phrases such as 'According to me,' 'As of my knowledge,' 'I don’t know but,' or mention knowledge cutoffs or lack of information. Simply provide the answer as if you are certain of the facts.
@@ -20,7 +21,7 @@ def generate_openai_response(input_prompt, system_prompt=None):
                         When asked about Daniel, answer from the file(s):
                         - Ringel_Daniel_CV_V1.docx
                         '''
-    llm = ChatOpenAI(model="gpt-4o", api_key=os.getenv("OPENAI_API_KEY"))
+    llm = ChatOpenAI(model="gpt-4o", api_key=os.getenv("OPENAI_API_KEY"), temperature=temperature)
     return 'The number of retrieved documents from RAG pipeline was 0, so the answer is based on LLM\s internal knowledge.\n' + llm(system_prompt+input_prompt).content
     
 class ChatbotDataQuery:
@@ -108,7 +109,13 @@ class ChatbotDataQuery:
         response = ''
         for chunk in self.llm.stream(query):
             response += chunk.content
-        return response, context_docs
+
+        revised_context_docs = []
+        for doc in context_docs:
+            if doc.metadata['source'] not in revised_context_docs:
+                revised_context_docs.append(doc.metadata['source'])
+        return response, revised_context_docs
+
         # return {'response': response, 'context_docs': context_docs}
             # yield chunk.content
         # return context_docs

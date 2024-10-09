@@ -20,6 +20,6 @@ Query_Doc_Map = {
     ],
 
     'who is Daniel Ringel?': [
-        'CV/Ringel_Daniel_CV_V1.docx'
+        'CV/Ringel_Daniel_CV.docx'
     ]
 }

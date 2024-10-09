@@ -93,41 +93,72 @@ class RAGChatbot:
         self.data_ingester.load_and_ingest(dir_path, empty_db=empty)
 
     def __route(self, query_text):
+        """
+        Route the query to either GPT-4 or RAG depending on GPT-4's response.
+        """
         query_text = query_text.lower()
-        def cosine_similarity_calc(vec1, vec2):
-            vec1 = np.array(vec1).reshape(1, -1)
-            vec2 = np.array(vec2).reshape(1, -1)
-            return cosine_similarity(vec1, vec2)[0][0]
 
-        def get_embeddings(client, text):
-            response = client.embeddings.create(
-                input=text,
-                model="text-embedding-3-large"
-            )
-            return response.data[0].embedding
+        # Step 1: Send query to GPT-4 for a response
+        system_prompt = '''
+        You are an intelligent assistant designed to handle general knowledge questions. 
+        Your job is to either confidently provide an answer to common questions or acknowledge that you need external information to answer. 
+        If the question can be answered with your internal knowledge base, answer it directly and clearly.
+        If the question asks for details you don't have or for which you would need external resources, simply respond with "no" without any additional explanation.
 
-        # Generate embeddings for the incoming query
-        query_embedding = get_embeddings(self.client, query_text)
+        Focus on accuracy—only answer if you're sure. Otherwise, say "no".
+        '''
         
-        best_match = None
-        highest_similarity = 0
+        if 'who are you' not in query_text:
+            input_prompt = f'Query: {query_text}'
+            gpt4_response = generate_openai_response(input_prompt, system_prompt)
+            gpt4_response = ''.join(gpt4_response.split('\n')[1:])
 
-        for main_query, similar_queries in Queries.items():
-            for query in similar_queries:
-                query = query.lower()
-                preset_embedding = get_embeddings(self.client, query)
-                similarity_score = cosine_similarity_calc(query_embedding, preset_embedding)
-                if similarity_score > highest_similarity:
-                    highest_similarity = similarity_score
-                    best_match = main_query
+            if 'no' not in gpt4_response.strip().lower():
+                return gpt4_response, 'GPT Response'
 
-        if highest_similarity >= 0.75:
-            print(f'Response from routing: query_text: {query_text} - best_match query: {best_match} - Doc: {Query_Doc_Map[best_match][0]} - similarity: {highest_similarity}')
-            response, file_path = self.__generate_response_from_file(query_text, Query_Doc_Map[best_match][0])
-            return response, file_path
+            # Step 2: Check if GPT-4 returned "no"
+            elif 'no' in gpt4_response.strip().lower():
+                # Step 3: Fallback to RAG
+                def cosine_similarity_calc(vec1, vec2):
+                    vec1 = np.array(vec1).reshape(1, -1)
+                    vec2 = np.array(vec2).reshape(1, -1)
+                    return cosine_similarity(vec1, vec2)[0][0]
+
+                def get_embeddings(client, text):
+                    response = client.embeddings.create(
+                        input=text,
+                        model="text-embedding-3-large"
+                    )
+                    return response.data[0].embedding
+
+                # Generate embeddings for the incoming query
+                query_embedding = get_embeddings(self.client, query_text)
+
+                best_match = None
+                highest_similarity = 0
+
+                for main_query, similar_queries in Queries.items():
+                    for query in similar_queries:
+                        query = query.lower()
+                        preset_embedding = get_embeddings(self.client, query)
+                        similarity_score = cosine_similarity_calc(query_embedding, preset_embedding)
+                        if similarity_score > highest_similarity:
+                            highestquery_text_similarity = similarity_score
+                            best_match = main_query
+
+                if highest_similarity >= 0.75:
+                    print(f'Response from RAG routing: query_text: {query_text} - best_match query: {best_match} - Doc: {Query_Doc_Map[best_match][0]} - similarity: {highest_similarity}')
+                    response, file_path = self.__generate_response_from_file(query_text, Query_Doc_Map[best_match][0])
+                    return response, file_path
+                else:
+                    return None, None
+
         else:
-            return None, None
+            response = '''Hello! My name is Wagner, inspired by the character from Goethe’s Faust. In the play, Wagner is Faust’s loyal assistant, supporting his intellectual pursuits, but in a more concentrated way. Similarly, my task is to assist with Daniel Rangel\'s research in artificial intelligence and marketing. I’m well-versed in Daniel’s publications, his ongoing research, CV, and academic achievements, and my mission is to provide precise, well-structured information about his academic career.
+                        While I may not have lofty aspirations like transforming the world, I’m committed to representing Daniel’s work within a defined scope. I aim to assist with inquiries regarding Daniel’s research, teaching, and professional path, and I might even share personal insights if treated with respect.'''
 
+            return response, 'None'
+            
     def __generate_response_from_file(self, query_text, file_path):
         """
         Generate response from a file.
