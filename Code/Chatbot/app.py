@@ -70,5 +70,6 @@ if prompt and sources:
             st.write(f"**Document {i+1} Metadata:**")
             st.json(doc.metadata)
     else:
-        st.write(f"**Document 1 Metadata:**")
-        st.json({"source": sources})
+        if sources != 'None':
+            st.write(f"**Document 1 Metadata:**")
+            st.json({"source": sources})
