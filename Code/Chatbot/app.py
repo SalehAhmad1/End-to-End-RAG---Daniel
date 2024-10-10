@@ -65,11 +65,11 @@ if prompt:
 # Optionally display relevant documents with metadata
 if prompt and sources:
     st.subheader("Relevant Documents")
-    if isinstance(sources, list):
-        for i, doc in enumerate(sources):
-            st.write(f"**Document {i+1} Metadata:**")
-            st.json(doc.metadata)
-    else:
-        if sources != 'None':
-            st.write(f"**Document 1 Metadata:**")
-            st.json({"source": sources})
+    if type(sources) != str:
+        docs = sources
+        for i, doc in enumerate(docs):
+            st.write(f"**Document {i+1}:**")
+            st.json(doc)
+    elif type(sources) == str and sources != 'None':
+        st.write(f"**Document {1}:**")
+        st.json({"source": sources})

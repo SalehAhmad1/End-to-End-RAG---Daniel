@@ -57,6 +57,7 @@ class ChatbotDataQuery:
         )
 
         Highest_Similarity_Score = retrieved_results[0][1]
+        Highest_Similarity_Score = np.around(Highest_Similarity_Score, decimals=1)
         print(f'The highest similarity score is {Highest_Similarity_Score}')
 
         if Highest_Similarity_Score > 0.51:
